@@ -7,8 +7,6 @@ import android.content.pm.PackageManager
 import android.support.design.widget.Snackbar
 import android.support.v7.app.AppCompatActivity
 import android.app.LoaderManager.LoaderCallbacks
-import android.content.CursorLoader
-import android.content.Loader
 import android.database.Cursor
 import android.net.Uri
 import android.os.AsyncTask
@@ -23,14 +21,17 @@ import android.widget.TextView
 
 import java.util.ArrayList
 import android.Manifest.permission.READ_CONTACTS
+import android.content.*
 import android.util.Log
 import com.example.oscar.appfororetrofit.R
 import com.example.oscar.appfororetrofit.api.ApiForoService
 import com.example.oscar.appfororetrofit.model.Post
 import com.example.oscar.appfororetrofit.model.Result
+import com.example.oscar.appfororetrofit.model.ApiForoSingleton
 
 import kotlinx.android.synthetic.main.activity_login.*
 import org.jetbrains.anko.doAsync
+import org.jetbrains.anko.toast
 import org.jetbrains.anko.uiThread
 import retrofit2.Call
 
@@ -42,29 +43,117 @@ class LoginActivity : AppCompatActivity(), LoaderCallbacks<Cursor> {
      * Keep track of the login task to ensure we can cancel it if requested.
      */
     private var mAuthTask: UserLoginTask? = null
-
+    private lateinit var cliente: ApiForoService
+    lateinit var preferences: SharedPreferences
+    
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_login)
+
+        preferences = getSharedPreferences("user", Context.MODE_PRIVATE)
         // Set up the login form.
-        populateAutoComplete()
-        password.setOnEditorActionListener(TextView.OnEditorActionListener { _, id, _ ->
-            if (id == EditorInfo.IME_ACTION_DONE || id == EditorInfo.IME_NULL) {
-                attemptLogin()
-                return@OnEditorActionListener true
+//        populateAutoComplete()
+//        password.setOnEditorActionListener(TextView.OnEditorActionListener { _, id, _ ->
+//            if (id == EditorInfo.IME_ACTION_DONE || id == EditorInfo.IME_NULL) {
+//                attemptLogin()
+//                return@OnEditorActionListener true
+//            }
+//            false
+//        })
+
+        ApiForoSingleton.cliente = ApiForoService.create()
+        cliente = ApiForoSingleton.cliente as ApiForoService
+
+        //test()
+
+        if (preferences.getBoolean("autologin", false)){
+            autoLogin()
+        }
+
+        email_sign_in_button.setOnClickListener { login() }
+        email_register_button.setOnClickListener{ register() }
+
+    }
+
+    private fun autoLogin() {
+        showProgress(true)
+        val username = preferences.getString("username", "")
+        val password = preferences.getString("password", "")
+        val llamada = cliente.login(username, password)
+        val intent = Intent(this, PostActivity::class.java)
+        doAsync {
+            val result = llamada.execute().body()
+            uiThread {
+                showProgress(false)
+                if (result!!.result){
+                    toast("Login correcto")
+                    startActivityForResult(intent, 0)
+                }else{
+                    toast("Error")
+                    val editor = preferences.edit()
+                    editor.putBoolean("autologin", false)
+                    editor.commit()
+                }
             }
-            false
-        })
+        }
+    }
 
-        test()
+    private fun register() {
+        showProgress(true)
+        val username = email.text.toString()
+        val password = password.text.toString()
+        val llamada = cliente.register(username, password, "${username}@correo.com")
+        doAsync {
+            val result = llamada.execute().body()
+            uiThread {
+                showProgress(false)
+                if (result != null){
+                    toast("Usuario registrado")
+                }else{
+                    toast("Error")
+                }
+            }
+        }
+    }
 
-        email_sign_in_button.setOnClickListener { attemptLogin() }
+    private fun login() {
+        showProgress(true)
+        val username = email.text.toString()
+        val password = password.text.toString()
+        val llamada = cliente.login(username, password)
+        val intent = Intent(this, PostActivity::class.java)
+        doAsync {
+            val result = llamada.execute().body()
+            uiThread {
+                showProgress(false)
+                if (result!!.result){
+                    toast("Login correcto")
+                    if (chkSave.isChecked) guardarDatos()
+                    startActivityForResult(intent, 0)
+                }else{
+                    toast("Error")
+                }
+            }
+        }
+    }
+
+    private fun guardarDatos() {
+        val username = email.text.toString()
+        val password = password.text.toString()
+        val editor = preferences.edit()
+        Log.d("LoginResult", "Datos de usuario guardados")
+        editor.putBoolean("autologin", true)
+        editor.putString("username", username)
+        editor.putString("password", password)
+        editor.commit()
     }
 
     private fun test() {
-        val cliente: ApiForoService = ApiForoService.create()
+
         val llamadaLogin: Call<Result> = cliente.login("oscar", "oscar")
         val llamadaPost: Call<List<Post>> = cliente.listaPost()
+        val intent = Intent(this, PostActivity::class.java)
+        intent.putExtra("username", "oscar")
 
         doAsync {
             val login = llamadaLogin.execute().body()
@@ -74,6 +163,7 @@ class LoginActivity : AppCompatActivity(), LoaderCallbacks<Cursor> {
                 listaPost!!.forEach {
                     Log.d("RetrofitResult", "Post -> ${it.post} : User -> ${it.user_username}")
                 }
+                startActivityForResult(intent, 0)
             }
         }
     }

@@ -36,7 +36,6 @@ interface ApiForoService {
     ):Call<Result>
 
     @POST("/apiforo/create/post/{name}")
-    @FormUrlEncoded
     fun createPost(
             @Path("name") Title: String
     ):Call<Result>
@@ -75,6 +74,7 @@ interface ApiForoService {
                     .build()
             return retrofit.create(ApiForoService::class.java)
         }
+
     }
 
 }
